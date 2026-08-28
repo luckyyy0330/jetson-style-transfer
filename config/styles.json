@@ -1,0 +1,53 @@
+{
+  "styles": [
+    {
+      "id": 1,
+      "name": "动漫",
+      "icon": "🎨",
+      "base_model": "animegan_v2.onnx",
+      "model_url": "https://github.com/bryandlee/animegan2-pytorch/raw/main/weights/v2/openface_weights.onnx",
+      "input_size": 512,
+      "normalize": "minus_one_to_one"
+    },
+    {
+      "id": 2,
+      "name": "写实",
+      "icon": "📷",
+      "base_model": "realistic_v5.onnx",
+      "model_url": "",
+      "input_size": 512,
+      "normalize": "minus_one_to_one"
+    },
+    {
+      "id": 3,
+      "name": "素描",
+      "icon": "✏️",
+      "base_model": "sketch_style.onnx",
+      "model_url": "",
+      "input_size": 512,
+      "normalize": "minus_one_to_one"
+    },
+    {
+      "id": 4,
+      "name": "宫崎骏",
+      "icon": " Miyazaki",
+      "base_model": "animegan_v2_paprika.onnx",
+      "model_url": "https://github.com/bryandlee/animegan2-pytorch/raw/main/weights/v2/paprika_weights.onnx",
+      "input_size": 512,
+      "normalize": "minus_one_to_one"
+    },
+    {
+      "id": 5,
+      "name": "人脸动漫",
+      "icon": "😊",
+      "base_model": "animegan_v2_face_paint.onnx",
+      "model_url": "https://github.com/bryandlee/animegan2-pytorch/raw/main/weights/v2/face_paint_512_v2.pt",
+      "input_size": 512,
+      "normalize": "minus_one_to_one"
+    }
+  ],
+  "settings": {
+    "default_style_id": 1,
+    "max_fps": 60
+  }
+}

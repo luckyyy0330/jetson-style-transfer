@@ -1,0 +1,8 @@
+# 此目录用于存放模型文件
+# 模型文件不纳入 Git 管理
+
+请运行以下命令下载模型：
+
+```bash
+python scripts/download_models.py
+```

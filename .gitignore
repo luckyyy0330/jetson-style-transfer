@@ -1,0 +1,57 @@
+# 模型文件
+models/*.engine
+models/*.onnx
+models/*.pth
+models/*.pt
+models/sd-v1-5/
+models/controlnet-canny/
+models/loras/*.safetensors
+
+# 捕获的文件
+assets/captures/*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+logs/
+
+# 临时文件
+*.tmp
+*.temp

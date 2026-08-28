@@ -1,0 +1,25 @@
+{
+  "camera": {
+    "type": "csi",
+    "width": 1280,
+    "height": 720,
+    "fps": 30
+  },
+  "processing": {
+    "input_size": 512,
+    "max_batch_size": 1,
+    "use_fp16": true,
+    "tensorrt_workspace": "4096"
+  },
+  "storage": {
+    "sd_card_path": "/media/sdcard",
+    "usb_path": "/media/usb",
+    "captures_dir": "assets/captures",
+    "max_captures": 1000
+  },
+  "thermal": {
+    "max_temp": 85,
+    "throttle_temp": 80,
+    "fan_speed": 80
+  }
+}
