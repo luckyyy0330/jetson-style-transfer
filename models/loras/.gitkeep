@@ -1,8 +1,0 @@
-# 此目录用于存放 LoRA 风格模型
-# LoRA 文件不纳入 Git 管理
-
-请运行以下命令下载 LoRA 模型：
-
-```bash
-python scripts/download_models.py --lora
-```

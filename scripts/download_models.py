@@ -56,14 +56,26 @@ def download_model(url: str, output_path: str) -> bool:
         # 创建目录
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        # 下载文件
+        # 下载文件（支持 HuggingFace 等需要自定义 UA 的源）
         def progress_hook(block_num, block_size, total_size):
             downloaded = block_num * block_size
             if total_size > 0:
                 percent = min(100, downloaded * 100 // total_size)
                 print(f"\r  下载进度: {percent}% ({downloaded // 1024}KB / {total_size // 1024}KB)", end="", flush=True)
 
-        urllib.request.urlretrieve(url, output_path, reporthook=progress_hook)
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=120) as response, open(output_path, 'wb') as out_file:
+            total = int(response.headers.get('Content-Length', 0))
+            downloaded = 0
+            while True:
+                chunk = response.read(8192)
+                if not chunk:
+                    break
+                out_file.write(chunk)
+                downloaded += len(chunk)
+                if total > 0:
+                    percent = min(100, downloaded * 100 // total)
+                    print(f"\r  下载进度: {percent}% ({downloaded // 1024}KB / {total // 1024}KB)", end="", flush=True)
         print()  # 换行
 
         # 验证文件

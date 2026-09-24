@@ -3,9 +3,6 @@ models/*.engine
 models/*.onnx
 models/*.pth
 models/*.pt
-models/sd-v1-5/
-models/controlnet-canny/
-models/loras/*.safetensors
 
 # 捕获的文件
 assets/captures/*

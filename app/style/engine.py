@@ -37,20 +37,23 @@ class MultiBackendEngine:
     def __init__(
         self,
         model_dir: str = "models",
-        input_size: int = 512,
-        prefer_backend: Optional[BackendType] = None
+        input_size: tuple = (512, 512),
+        prefer_backend: Optional[BackendType] = None,
+        strength: float = 1.0,
     ):
         """
         初始化多后端引擎
 
         Args:
             model_dir: 模型目录
-            input_size: 输入尺寸
+            input_size: 输入尺寸 (width, height) 元组
             prefer_backend: 优先使用的后端
+            strength: 风格强度
         """
         self.model_dir = model_dir
         self.input_size = input_size
         self.prefer_backend = prefer_backend
+        self.strength = strength
 
         # 当前后端和引擎实例
         self.current_backend: BackendType = BackendType.NONE
@@ -129,14 +132,28 @@ class MultiBackendEngine:
             logger.error("没有可用的推理后端")
             return False
 
-        self.current_backend = backend
         self._current_style = style
 
+        # 按优先级尝试；TensorRT 引擎缺失/损坏时自动回退 ONNX Runtime
+        candidates = []
         if backend == BackendType.TENSORRT:
-            return self._load_tensorrt(style)
+            candidates = [BackendType.TENSORRT, BackendType.ONNX_RUNTIME]
         elif backend == BackendType.ONNX_RUNTIME:
-            return self._load_onnx(style)
+            candidates = [BackendType.ONNX_RUNTIME]
+        else:
+            candidates = [backend]
 
+        for cand in candidates:
+            if cand not in self.available_backends:
+                continue
+            loader = self._load_tensorrt if cand == BackendType.TENSORRT else self._load_onnx
+            if loader(style):
+                self.current_backend = cand
+                return True
+            logger.warning(f"{cand.value} 加载失败，尝试下一个后端")
+
+        logger.error("所有后端加载失败")
+        self.current_backend = BackendType.NONE
         return False
 
     def _find_model_file(self, style: Style, extension: str) -> Optional[str]:
@@ -144,9 +161,9 @@ class MultiBackendEngine:
         查找模型文件
 
         搜索顺序：
-        1. style.base_model 指定的文件名
-        2. style_{style_id}.{ext}
-        3. styles 子目录下按名称查找
+        1. trt/style_{id}_{w}x{h}_{prec}.engine（带分辨率/精度后缀的 TensorRT 引擎）
+        2. trt/style_{id}.engine（旧命名兼容）
+        3. base_model 指定的文件名
 
         Args:
             style: 风格配置
@@ -155,19 +172,33 @@ class MultiBackendEngine:
         Returns:
             模型文件路径，未找到返回 None
         """
-        # 1. 直接使用 base_model
-        model_path = os.path.join(self.model_dir, style.base_model)
-        if os.path.exists(model_path):
-            return model_path
+        if extension == "engine":
+            w, h = style.input_size
+            # 新命名：style_{id}_{w}x{h}_{prec}.engine
+            trt_dir = os.path.join(self.model_dir, "trt")
+            if os.path.isdir(trt_dir):
+                # 优先精确匹配 fp16
+                for suffix in ("fp16", "fp32", "fp16_iofp16", "fp32_iofp16"):
+                    p = os.path.join(trt_dir, f"style_{style.id}_{w}x{h}_{suffix}.engine")
+                    if os.path.exists(p):
+                        return p
+                # 旧命名兼容
+                legacy = os.path.join(trt_dir, f"style_{style.id}.engine")
+                if os.path.exists(legacy):
+                    return legacy
+                # 任意精度后缀兜底
+                import glob
+                matches = sorted(glob.glob(os.path.join(trt_dir, f"style_{style.id}_*.engine")))
+                if matches:
+                    return matches[0]
 
-        # 2. style_{id}.{ext}
-        alt_path = os.path.join(
-            self.model_dir, "styles", f"style_{style.id}.{extension}"
-        )
-        if os.path.exists(alt_path):
-            return alt_path
+        # base_model 直接使用（仅当扩展名匹配时）
+        if style.base_model.endswith(f".{extension}"):
+            model_path = os.path.join(self.model_dir, style.base_model)
+            if os.path.exists(model_path):
+                return model_path
 
-        # 3. 如果 base_model 没有扩展名，尝试加上
+        # 如果 base_model 没有扩展名，尝试加上
         if not style.base_model.endswith(f".{extension}"):
             model_path = os.path.join(
                 self.model_dir, f"{style.base_model}.{extension}"
@@ -195,6 +226,7 @@ class MultiBackendEngine:
                 input_size=style.input_size,
                 backend="tensorrt",
                 normalize=style.normalize,
+                sharpen=style.sharpen,
             )
 
             if not self.backend_instance.load():
@@ -225,6 +257,7 @@ class MultiBackendEngine:
                 input_size=style.input_size,
                 backend="onnx",
                 normalize=style.normalize,
+                sharpen=style.sharpen,
             )
 
             if not self.backend_instance.load():
@@ -241,18 +274,25 @@ class MultiBackendEngine:
         """
         切换风格（可能需要重新加载模型）
 
+        **必须在推理线程内调用**，且调用前先 `quiesce()`。
+        UI 线程请通过 mailbox 投递切换请求。
+
         Args:
             new_style: 新风格配置
 
         Returns:
             是否成功
         """
+        # 先静默（等 pending + 丢 graph），再决定是否需要重载
+        self.quiesce()
+
         # 如果模型文件相同，只需更新 style 引用
         if (self._current_style and
             self._current_style.base_model == new_style.base_model and
             self.backend_instance is not None):
             logger.info(f"模型相同，更新风格: {new_style.name}")
             self._current_style = new_style
+            self.input_size = new_style.input_size
             return True
 
         # 模型不同，重新加载
@@ -272,6 +312,10 @@ class MultiBackendEngine:
         """
         if self.backend_instance is None:
             raise RuntimeError("模型未加载")
+
+        # TensorRT 使用原生 API 推理
+        if self.current_backend == BackendType.TENSORRT:
+            return self.backend_instance._infer_tensorrt(input_data)
 
         return self.backend_instance.session.run(
             [self.backend_instance.output_name],
@@ -298,8 +342,79 @@ class MultiBackendEngine:
 
         if style is not None and style.input_size != self.input_size:
             self.input_size = style.input_size
+            # 同步到后端实例，避免换风格后预处理尺寸停留在旧值
+            if self.backend_instance is not None:
+                self.backend_instance.input_size = style.input_size
+                self.backend_instance.input_width, self.backend_instance.input_height = style.input_size
 
-        return self.backend_instance.transfer(content_image)
+        return self.backend_instance.transfer(
+            content_image, strength=self.strength
+        )
+
+    # ---- CUDA 快路径三段式 API（Submit / ReleaseInput / Wait）----
+
+    @property
+    def use_gpu_path(self) -> bool:
+        """是否走 CUDA Graph + 融合前后处理快路径"""
+        return bool(
+            self.backend_instance is not None
+            and getattr(self.backend_instance, "use_gpu_path", False)
+        )
+
+    @property
+    def graph_active(self) -> bool:
+        """CUDA Graph 是否已实例化"""
+        return bool(
+            self.backend_instance is not None
+            and getattr(self.backend_instance, "graph_active", False)
+        )
+
+    def copy_source(self, frame: np.ndarray) -> bool:
+        """拷贝源帧到 mapped staging。见 GANEngine.copy_source。"""
+        if self.backend_instance is None:
+            return False
+        fn = getattr(self.backend_instance, "copy_source", None)
+        if fn is None:
+            return False
+        return fn(frame)
+
+    def submit(self, src_w: int, src_h: int, src_pitch: int,
+               fmt: int = 0, matrix: int = 0, full_range: bool = False) -> float:
+        """Submit：set_source + run。staging 中必须已有该帧数据。"""
+        if self.backend_instance is None:
+            raise RuntimeError("模型未加载")
+        return self.backend_instance.submit(src_w, src_h, src_pitch, fmt, matrix, full_range)
+
+    def release_input(self) -> float:
+        """提前归还输入缓冲（TRT 还在跑时）"""
+        if self.backend_instance is None:
+            return 0.0
+        fn = getattr(self.backend_instance, "release_input", None)
+        return fn() if fn else 0.0
+
+    def wait(self) -> Tuple[np.ndarray, float]:
+        """
+        等待推理完成。
+
+        Returns:
+            (styled_bgr, wait_time_ms) — styled_bgr 是**已持有**的数组，
+            可安全投递到显示队列 / 用于 strength 第二前向。
+        """
+        if self.backend_instance is None:
+            raise RuntimeError("模型未加载")
+        return self.backend_instance.wait()
+
+    def quiesce(self):
+        """
+        静默引擎：等 pending 请求结束、丢弃 CUDA Graph。
+
+        换风格/换分辨率前**必须**在推理线程内调用，之后再 `switch_style`。
+        UI 线程绝不要直接碰 CUDA。
+        """
+        if self.backend_instance is not None:
+            fn = getattr(self.backend_instance, "quiesce", None)
+            if fn is not None:
+                fn()
 
     def unload(self):
         """卸载模型，释放资源"""

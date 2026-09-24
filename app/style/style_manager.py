@@ -20,8 +20,9 @@ class Style:
     icon: str
     base_model: str              # ONNX 模型文件名（相对于 models/）
     model_url: str = ""          # 模型下载地址
-    input_size: int = 512        # 模型输入尺寸
+    input_size: tuple = (512, 512)  # 模型输入尺寸 (width, height)
     normalize: str = "minus_one_to_one"  # 归一化方式
+    sharpen: float = 0.0         # 锐化强度（0=不锐化，0.3=轻度，0.5=中度）；由 config/styles.json 覆盖
 
 
 class StyleManager:
@@ -62,14 +63,22 @@ class StyleManager:
                 config = json.load(f)
 
             for style_data in config.get('styles', []):
+                # input_size 支持 int 或 [w, h] 两种格式
+                raw_size = style_data.get('input_size', 512)
+                if isinstance(raw_size, list):
+                    input_size = (raw_size[0], raw_size[1])
+                else:
+                    input_size = (raw_size, raw_size)
+
                 style = Style(
                     id=style_data['id'],
                     name=style_data['name'],
                     icon=style_data.get('icon', ''),
                     base_model=style_data['base_model'],
                     model_url=style_data.get('model_url', ''),
-                    input_size=style_data.get('input_size', 512),
+                    input_size=input_size,
                     normalize=style_data.get('normalize', 'minus_one_to_one'),
+                    sharpen=float(style_data.get('sharpen', 0.0)),
                 )
                 self.styles[style.id] = style
 

@@ -71,10 +71,6 @@ def install_python_packages():
             sys.executable, "-m", "pip", "install",
             "--force-reinstall",
             "numpy<2.0",
-            "diffusers==0.25.0",
-            "transformers==4.35.2",
-            "accelerate==0.25.0",
-            "safetensors>=0.4.0",
         ]
         subprocess.run(core_cmd, check=False)
 
@@ -118,8 +114,7 @@ def create_directories():
     """创建必要的目录"""
     dirs = [
         "assets/captures",
-        "models/loras",
-        "models/trt_engines",
+        "models/trt",
     ]
 
     for d in dirs:
